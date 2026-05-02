@@ -2749,30 +2749,79 @@ function formatCurrency(val) {
 }
 
 function todayISO() {
-  return new Date().toISOString().split('T')[0];
+  // Use local date parts to avoid UTC offset issues (important for IST +5:30)
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm   = String(now.getMonth() + 1).padStart(2, '0');
+  const dd   = String(now.getDate()).padStart(2, '0');
+  return yyyy + '-' + mm + '-' + dd;
+}
+
+/**
+ * Parses a date value safely into a local Date object.
+ * Accepts: undefined/null → today
+ *          Date object   → as-is
+ *          "YYYY-MM-DD"  → treated as local date (avoids UTC midnight shift)
+ *          "DD/MM/YYYY"  → stored display format → parsed correctly
+ *          Any other string → fallback to new Date(d) with warning
+ */
+function parseLocalDate(d) {
+  if (!d) return new Date();
+  if (d instanceof Date) return d;
+  const s = String(d).trim();
+  // ISO format: YYYY-MM-DD (from <input type="date">)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, mo, dy] = s.split('-').map(Number);
+    return new Date(y, mo - 1, dy);
+  }
+  // Display format: DD/MM/YYYY (stored in DB)
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+    const [dy, mo, y] = s.split('/').map(Number);
+    return new Date(y, mo - 1, dy);
+  }
+  // Fallback
+  return new Date(d);
 }
 
 function fmtDate(d) {
-  const dt = d ? new Date(d) : new Date();
-  const dd = String(dt.getDate()).padStart(2,'0');
-  const mm = String(dt.getMonth()+1).padStart(2,'0');
-  return dd+'/'+mm+'/'+dt.getFullYear();
+  const dt = parseLocalDate(d);
+  const dd = String(dt.getDate()).padStart(2, '0');
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  return dd + '/' + mm + '/' + dt.getFullYear();
 }
 
 function fmtDateTime(d) {
-  const dt = d ? new Date(d) : new Date();
-  let h = dt.getHours(), min = String(dt.getMinutes()).padStart(2,'0');
+  const dt = d ? parseLocalDate(d) : new Date();
+  let h = dt.getHours(), min = String(dt.getMinutes()).padStart(2, '0');
   const ampm = h >= 12 ? 'pm' : 'am';
   h = h % 12 || 12;
-  return fmtDate(dt)+', '+String(h).padStart(2,'0')+':'+min+' '+ampm;
+  return fmtDate(dt) + ', ' + String(h).padStart(2, '0') + ':' + min + ' ' + ampm;
 }
 
 function nowTime() {
   const now = new Date();
-  let h = now.getHours(), min = String(now.getMinutes()).padStart(2,'0');
+  let h = now.getHours(), min = String(now.getMinutes()).padStart(2, '0');
   const ampm = h >= 12 ? 'pm' : 'am';
   h = h % 12 || 12;
-  return String(h).padStart(2,'0') + ':' + min + ' ' + ampm;
+  return String(h).padStart(2, '0') + ':' + min + ' ' + ampm;
+}
+
+/**
+ * Converts a stored display-format date "DD/MM/YYYY" to ISO "YYYY-MM-DD"
+ * for use in <input type="date"> fields.
+ * Also handles if value is already ISO (no-op) or empty.
+ */
+function toInputDate(dateStr) {
+  if (!dateStr) return '';
+  const s = String(dateStr).trim();
+  // Already ISO
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // DD/MM/YYYY → YYYY-MM-DD
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+    const [dd, mm, yyyy] = s.split('/');
+    return yyyy + '-' + mm + '-' + dd;
+  }
+  return s;
 }
 
 // ── TIME INPUT MASK ───────────────────────────────────────────
@@ -2899,7 +2948,7 @@ function editInward(slNo) {
   if (!r) return;
   editingId = slNo;
   document.getElementById('inwardModalTitle').textContent = 'Edit Inward Entry';
-  document.getElementById('in_date').value         = r.Date ? r.Date.split('/').reverse().join('-') : '';
+  document.getElementById('in_date').value         = toInputDate(r.Date);
   document.getElementById('in_time').value         = r.Time||'';
   document.getElementById('in_invoice').value      = r.InvoiceNo||'';
   document.getElementById('in_type').value         = r.TypeOfProduct||'';
@@ -3006,7 +3055,7 @@ function editOutward(slNo) {
   if (!r) return;
   editingId = slNo;
   document.getElementById('outwardModalTitle').textContent = 'Edit Outward Entry';
-  document.getElementById('out_date').value     = r.Date ? r.Date.split('/').reverse().join('-') : '';
+  document.getElementById('out_date').value     = toInputDate(r.Date);
   document.getElementById('out_time').value     = r.Time||'';
   document.getElementById('out_invoice').value  = r.InvoiceNo||'';
   document.getElementById('out_type').value     = r.TypeOfProduct||'';
@@ -3019,7 +3068,7 @@ function editOutward(slNo) {
   document.getElementById('out_receiver').value = r.ReceiverName||'';
   document.getElementById('out_awb').value      = r.AWBNoMobileNo||'';
   document.getElementById('out_status').value   = r.Status||'Dispatched';
-  document.getElementById('out_deliverydate').value = r.DeliveryDate ? r.DeliveryDate.split('/').reverse().join('-') : '';
+  document.getElementById('out_deliverydate').value = toInputDate(r.DeliveryDate);
   document.getElementById('out_accessories').value = r.AccessoriesDetails||'';
   openModal('outwardModal');
 }
@@ -3156,7 +3205,7 @@ function editRepair(slNo) {
   if (!r) return;
   editingId = slNo;
   document.getElementById('repairModalTitle').textContent = `Edit Job — JOB-${String(slNo).padStart(4,'0')}`;
-  document.getElementById('rep_date').value           = r.ReceivedDate ? r.ReceivedDate.split('/').reverse().join('-') : '';
+  document.getElementById('rep_date').value           = toInputDate(r.ReceivedDate);
   document.getElementById('rep_time').value           = r.ReceivedTime||'';
   document.getElementById('rep_status').value         = r.JobStatus||'Pending';
   document.getElementById('rep_company').value        = r.CompanyName||'';
@@ -3179,7 +3228,7 @@ function editRepair(slNo) {
   document.getElementById('rep_person').value         = r.PersonName||'';
   document.getElementById('rep_repairtype').value     = r.TypeOfRepair||'General Service';
   document.getElementById('rep_replaced').value       = r.ReplacedDeviceDetails||'';
-  document.getElementById('rep_returndate').value     = r.ReceivedDateReturn ? r.ReceivedDateReturn.split('/').reverse().join('-') : '';
+  document.getElementById('rep_returndate').value     = toInputDate(r.ReceivedDateReturn);
   document.getElementById('rep_remarks').value        = r.Remarks||'';
   openModal('repairModal');
 }
@@ -3332,7 +3381,7 @@ function editCustomOrder(slNo) {
   if (!r) return;
   editingId = slNo;
   document.getElementById('customOrderModalTitle').textContent = `Edit Order — JOB-${String(slNo).padStart(4,'0')}`;
-  document.getElementById('co_date').value      = r.ReceivedDate ? r.ReceivedDate.split('/').reverse().join('-') : '';
+  document.getElementById('co_date').value      = toInputDate(r.ReceivedDate);
   document.getElementById('co_time').value      = r.ReceivedTime||'';
   document.getElementById('co_status').value    = r.JobStatus||'Received';
   document.getElementById('co_company').value   = r.CompanyName||'';
@@ -3347,7 +3396,7 @@ function editCustomOrder(slNo) {
   document.getElementById('co_total').value     = r.TotalCost||0;
   document.getElementById('co_discount').value  = r.DiscountPercent||0;
   document.getElementById('co_orderstatus').value = r.OrderStatus||'Pending';
-  document.getElementById('co_returndate').value  = r.ReturnReceivedDate ? r.ReturnReceivedDate.split('/').reverse().join('-') : '';
+  document.getElementById('co_returndate').value  = toInputDate(r.ReturnReceivedDate);
   document.getElementById('co_remarks').value   = r.Remarks||'';
   openModal('customOrderModal');
 }
@@ -3445,7 +3494,7 @@ function editWholesale(slNo) {
   const r = all.find(x => String(x['SL.NO']) === String(slNo));
   if (!r) return;
   editingId = slNo;
-  document.getElementById('ws_date').value       = r.Date ? r.Date.split('/').reverse().join('-') : '';
+  document.getElementById('ws_date').value       = toInputDate(r.Date);
   document.getElementById('ws_dealer').value     = r.DealerName||'';
   document.getElementById('ws_contact').value    = r.ContactPerson||'';
   document.getElementById('ws_product').value    = r.Product||'';

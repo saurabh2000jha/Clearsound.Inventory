@@ -1793,6 +1793,23 @@ textarea.form-control { resize: vertical; min-height: 80px; }
                   </div>
                   <pre id="appsScriptCode" style="background:#0a1020;border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;font-size:11px;font-family:'DM Mono',monospace;color:#a8c0ff;overflow-x:auto;white-space:pre-wrap;max-height:400px;overflow-y:auto">const SHEET_TABS = ['inward','outward','repairs','customOrders','wholesale','purchaseOrders','suppliers','stock','stockMovement','users','settings'];
 
+// Format a Date object as DD/MM/YYYY string (avoids JSON serialisation as ISO timestamp)
+function formatDateDMY(d) {
+  if (!(d instanceof Date) || isNaN(d)) return '';
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  return dd+'/'+mm+'/'+d.getFullYear();
+}
+
+// Format a Date object's time portion as HH:MM am/pm string
+function formatTimeAmPm(d) {
+  if (!(d instanceof Date) || isNaN(d)) return '';
+  let h = d.getHours(), min = String(d.getMinutes()).padStart(2,'0');
+  const ampm = h >= 12 ? 'pm' : 'am';
+  h = h % 12 || 12;
+  return String(h).padStart(2,'0')+':'+min+' '+ampm;
+}
+
 function doPost(e) {
   try {
     const params = JSON.parse(e.postData.contents);
@@ -1838,13 +1855,30 @@ function doPost(e) {
         if (!vals.length || !vals[0].length) { db[tab] = tab === 'settings' ? {} : []; return; }
         if (tab === 'settings') {
           const obj = {};
-          for (let i = 1; i < vals.length; i++) obj[vals[i][0]] = vals[i][1];
+          for (let i = 1; i < vals.length; i++) {
+            const k = vals[i][0], v = vals[i][1];
+            obj[k] = (v instanceof Date) ? formatDateDMY(v) : v;
+          }
           db[tab] = obj;
         } else {
           const headers = vals[0];
           db[tab] = vals.slice(1).map(row => {
             const r = {};
-            headers.forEach((h,i) => r[h] = row[i] !== undefined ? row[i] : '');
+            headers.forEach((h, i) => {
+              let v = row[i];
+              if (v instanceof Date) {
+                // Check if this cell has a time component (hour/min not zero)
+                if (v.getHours() !== 0 || v.getMinutes() !== 0) {
+                  // Time cell — format as HH:MM am/pm
+                  r[h] = formatTimeAmPm(v);
+                } else {
+                  // Pure date cell — format as DD/MM/YYYY
+                  r[h] = formatDateDMY(v);
+                }
+              } else {
+                r[h] = v !== undefined ? v : '';
+              }
+            });
             return r;
           });
         }
@@ -2749,7 +2783,7 @@ function formatCurrency(val) {
 }
 
 function todayISO() {
-  // Use local date parts to avoid UTC offset issues (important for IST +5:30)
+  // Use local date parts — avoids UTC offset issues (important for IST +5:30)
   const now = new Date();
   const yyyy = now.getFullYear();
   const mm   = String(now.getMonth() + 1).padStart(2, '0');
@@ -2758,29 +2792,36 @@ function todayISO() {
 }
 
 /**
- * Parses a date value safely into a local Date object.
- * Accepts: undefined/null → today
- *          Date object   → as-is
- *          "YYYY-MM-DD"  → treated as local date (avoids UTC midnight shift)
- *          "DD/MM/YYYY"  → stored display format → parsed correctly
- *          Any other string → fallback to new Date(d) with warning
+ * Safely parse any date value into a local Date object.
+ * Handles:
+ *   - undefined/null        → today
+ *   - Date object           → as-is
+ *   - "YYYY-MM-DD"          → local date (avoids UTC midnight shift)
+ *   - "DD/MM/YYYY"          → stored display format
+ *   - ISO timestamp string  → from Google Sheets Date auto-conversion
  */
 function parseLocalDate(d) {
   if (!d) return new Date();
-  if (d instanceof Date) return d;
+  if (d instanceof Date) return isNaN(d) ? new Date() : d;
   const s = String(d).trim();
-  // ISO format: YYYY-MM-DD (from <input type="date">)
+  // ISO date only: YYYY-MM-DD
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
     const [y, mo, dy] = s.split('-').map(Number);
     return new Date(y, mo - 1, dy);
   }
-  // Display format: DD/MM/YYYY (stored in DB)
+  // Display format: DD/MM/YYYY
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
     const [dy, mo, y] = s.split('/').map(Number);
     return new Date(y, mo - 1, dy);
   }
-  // Fallback
-  return new Date(d);
+  // ISO timestamp (e.g. from Google Sheets): "2025-05-02T00:00:00.000Z"
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    const dt = new Date(s);
+    // Interpret as local date by extracting UTC parts
+    return new Date(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate());
+  }
+  const fallback = new Date(d);
+  return isNaN(fallback) ? new Date() : fallback;
 }
 
 function fmtDate(d) {
@@ -2807,21 +2848,85 @@ function nowTime() {
 }
 
 /**
- * Converts a stored display-format date "DD/MM/YYYY" to ISO "YYYY-MM-DD"
- * for use in <input type="date"> fields.
- * Also handles if value is already ISO (no-op) or empty.
+ * Converts any stored date string to "YYYY-MM-DD" for <input type="date"> fields.
+ * Handles DD/MM/YYYY, YYYY-MM-DD, ISO timestamps, and empty/null values.
  */
 function toInputDate(dateStr) {
   if (!dateStr) return '';
   const s = String(dateStr).trim();
-  // Already ISO
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
-  // DD/MM/YYYY → YYYY-MM-DD
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
-    const [dd, mm, yyyy] = s.split('/');
-    return yyyy + '-' + mm + '-' + dd;
-  }
-  return s;
+  if (!s) return '';
+  const dt = parseLocalDate(s);
+  if (isNaN(dt)) return '';
+  const yyyy = dt.getFullYear();
+  const mm   = String(dt.getMonth() + 1).padStart(2, '0');
+  const dd   = String(dt.getDate()).padStart(2, '0');
+  return yyyy + '-' + mm + '-' + dd;
+}
+
+/**
+ * DATE FIELDS in each module — used by normalisePulledDb()
+ * to ensure all date strings from Google Sheets are converted
+ * to the app's display format "DD/MM/YYYY" after a pull.
+ */
+const MODULE_DATE_FIELDS = {
+  inward:         ['Date'],
+  outward:        ['Date', 'DeliveryDate'],
+  repairs:        ['ReceivedDate', 'ReceivedDateReturn'],
+  customOrders:   ['ReceivedDate', 'ReturnReceivedDate'],
+  wholesale:      ['Date'],
+  purchaseOrders: ['OrderDate', 'ExpectedDate', 'ReceivedDate'],
+  stockMovement:  ['Date'],
+};
+
+/**
+ * Normalise all date (and time) fields in pulled data from Google Sheets.
+ * Google Sheets returns Date cells as JavaScript Date objects or ISO timestamps.
+ * This converts every date field to "DD/MM/YYYY" and every time field to
+ * "HH:MM am/pm" strings so the web app displays them correctly.
+ */
+function normalisePulledDb(db) {
+  Object.entries(MODULE_DATE_FIELDS).forEach(([tab, fields]) => {
+    if (!Array.isArray(db[tab])) return;
+    db[tab].forEach(row => {
+      fields.forEach(field => {
+        if (row[field] !== undefined && row[field] !== null && row[field] !== '') {
+          const v = row[field];
+          // If it's already a correct DD/MM/YYYY string, skip
+          if (typeof v === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(v.trim())) return;
+          row[field] = fmtDate(v);
+        }
+      });
+      // Normalise time fields: convert anything Google Sheets sends
+      // (e.g. a fraction-of-day number like 0.354 or a Date object) to HH:MM am/pm
+      ['Time', 'ReceivedTime'].forEach(tf => {
+        if (row[tf] === undefined || row[tf] === null || row[tf] === '') return;
+        const v = row[tf];
+        // Already formatted string like "08:42 pm"
+        if (typeof v === 'string' && /\d{1,2}:\d{2}\s*(am|pm)/i.test(v.trim())) return;
+        // Google Sheets stores times as fraction of day (e.g. 0.354166... = 08:30)
+        if (typeof v === 'number' && v >= 0 && v < 1) {
+          const totalMins = Math.round(v * 24 * 60);
+          let h = Math.floor(totalMins / 60);
+          const min = String(totalMins % 60).padStart(2, '0');
+          const ampm = h >= 12 ? 'pm' : 'am';
+          h = h % 12 || 12;
+          row[tf] = String(h).padStart(2, '0') + ':' + min + ' ' + ampm;
+          return;
+        }
+        // Date object or ISO string with time
+        if (v instanceof Date || (typeof v === 'string' && v.includes('T'))) {
+          const dt = new Date(v);
+          if (!isNaN(dt)) {
+            let h = dt.getUTCHours(), min = String(dt.getUTCMinutes()).padStart(2, '0');
+            const ampm = h >= 12 ? 'pm' : 'am';
+            h = h % 12 || 12;
+            row[tf] = String(h).padStart(2, '0') + ':' + min + ' ' + ampm;
+          }
+        }
+      });
+    });
+  });
+  return db;
 }
 
 // ── TIME INPUT MASK ───────────────────────────────────────────
@@ -4153,9 +4258,15 @@ async function pullFromSheets() {
     });
     const data = await resp.json();
     if (data.success && data.db) {
+      // ── NORMALISE dates & times from Google Sheets ──────────
+      // Google Sheets returns Date cells as JS Date objects or ISO timestamps.
+      // normalisePulledDb() converts all date fields to "DD/MM/YYYY" and
+      // time fields to "HH:MM am/pm" so the app displays them correctly.
+      const normalisedDb = normalisePulledDb(data.db);
+
       // Deep-merge settings, then assign the rest
-      if (data.db.settings) Object.assign(demoData.settings, data.db.settings);
-      const { settings: _s, ...rest } = data.db;
+      if (normalisedDb.settings) Object.assign(demoData.settings, normalisedDb.settings);
+      const { settings: _s, ...rest } = normalisedDb;
       Object.assign(demoData, rest);
       saveDb(demoData);
 

@@ -2441,7 +2441,49 @@ function startApp() {
 
   startClock();
   navTo('dashboard');
-  loadDashboard();
+
+  // ── AUTO-PULL FROM GOOGLE SHEETS ON LOGIN ─────────────────────────────
+  // Always fetch the latest data from Sheets when the user logs in.
+  // This ensures any device always shows up-to-date records without needing
+  // a manual Pull. Falls back to local data silently if Sheets is unreachable.
+  autoSyncOnLogin();
+}
+
+async function autoSyncOnLogin() {
+  const cfg = getGsConfig();
+  if (!cfg || !cfg.url) {
+    // No Sheets connected — just load from localStorage
+    loadDashboard();
+    return;
+  }
+  // Show a non-blocking loading indicator
+  showLoader();
+  try {
+    const resp = await fetch(cfg.url, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'pullAll' }),
+      headers: { 'Content-Type': 'text/plain' }
+    });
+    const data = await resp.json();
+    if (data.success && data.db) {
+      // Normalise all date/time fields from Sheets before saving
+      const normDb = normalisePulledDb(data.db);
+      if (normDb.settings) Object.assign(demoData.settings, normDb.settings);
+      const { settings: _s, ...rest } = normDb;
+      Object.assign(demoData, rest);
+      saveDb(demoData);
+      const now = fmtDateTime();
+      localStorage.setItem('clearsound_gs_lastsync', now);
+      const el = document.getElementById('gsLastSync');
+      if (el) el.textContent = now;
+    }
+  } catch(err) {
+    // Sheets unreachable — silently use local data (do not toast on login)
+    console.warn('[AutoSync] Login pull failed, using local data:', err.message);
+  } finally {
+    hideLoader();
+    loadDashboard(); // Always load dashboard after sync attempt
+  }
 }
 
 function handleLogout() {
@@ -2748,140 +2790,65 @@ function formatCurrency(val) {
   return '₹' + n.toLocaleString('en-IN');
 }
 
-// ── DATE / TIME UTILITIES (FIXED) ────────────────────────────
-// todayISO() uses local date parts — avoids UTC offset issue in IST (+5:30)
 function todayISO() {
-  const now = new Date();
-  const yyyy = now.getFullYear();
-  const mm   = String(now.getMonth() + 1).padStart(2, '0');
-  const dd   = String(now.getDate()).padStart(2, '0');
-  return yyyy + '-' + mm + '-' + dd;
+  const n=new Date();
+  return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0');
 }
 
-/**
- * parseLocalDate — safely parse ANY date value into a local JS Date.
- * Handles all formats that can arrive from Google Sheets or the web app:
- *   undefined / null        → today
- *   Date object             → as-is
- *   "YYYY-MM-DD"            → parsed as local date (no UTC shift)
- *   "DD/MM/YYYY"            → stored display format
- *   ISO timestamp string    → Google Sheets auto-conversion artefact
- *   Any other string/number → fallback to new Date(d)
- */
 function parseLocalDate(d) {
-  if (!d && d !== 0) return new Date();
-  if (d instanceof Date) return isNaN(d) ? new Date() : d;
-  const s = String(d).trim();
-  if (!s) return new Date();
-  // "YYYY-MM-DD" — from <input type="date">
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    const [y, mo, dy] = s.split('-').map(Number);
-    return new Date(y, mo - 1, dy);
-  }
-  // "DD/MM/YYYY" — stored display format
-  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)) {
-    const parts = s.split('/');
-    return new Date(Number(parts[2]), Number(parts[1]) - 1, Number(parts[0]));
-  }
-  // ISO timestamp — Google Sheets Date auto-conversion e.g. "2025-05-01T18:30:00.000Z"
-  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
-    const dt = new Date(s);
-    // Use UTC date parts to recover the original calendar date
-    return new Date(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate());
-  }
-  const fallback = new Date(d);
-  return isNaN(fallback) ? new Date() : fallback;
+  if (!d && d!==0) return new Date();
+  if (d instanceof Date) return isNaN(d)?new Date():d;
+  const s=String(d).trim(); if (!s) return new Date();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)){const [y,mo,dy]=s.split('-').map(Number);return new Date(y,mo-1,dy);}
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(s)){const p=s.split('/');return new Date(Number(p[2]),Number(p[1])-1,Number(p[0]));}
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)){const dt=new Date(s);return new Date(dt.getUTCFullYear(),dt.getUTCMonth(),dt.getUTCDate());}
+  const fb=new Date(d); return isNaN(fb)?new Date():fb;
 }
 
 function fmtDate(d) {
-  const dt = parseLocalDate(d);
-  const dd = String(dt.getDate()).padStart(2, '0');
-  const mm = String(dt.getMonth() + 1).padStart(2, '0');
-  return dd + '/' + mm + '/' + dt.getFullYear();
+  const dt=parseLocalDate(d);
+  return String(dt.getDate()).padStart(2,'0')+'/'+String(dt.getMonth()+1).padStart(2,'0')+'/'+dt.getFullYear();
 }
 
 function fmtDateTime(d) {
-  const dt = d ? parseLocalDate(d) : new Date();
-  let h = dt.getHours(), min = String(dt.getMinutes()).padStart(2, '0');
-  const ampm = h >= 12 ? 'pm' : 'am';
-  h = h % 12 || 12;
-  return fmtDate(dt) + ', ' + String(h).padStart(2, '0') + ':' + min + ' ' + ampm;
+  const dt=d?parseLocalDate(d):new Date();
+  let h=dt.getHours(),min=String(dt.getMinutes()).padStart(2,'0');
+  const ampm=h>=12?'pm':'am'; h=h%12||12;
+  return fmtDate(dt)+', '+String(h).padStart(2,'0')+':'+min+' '+ampm;
 }
 
 function nowTime() {
-  const now = new Date();
-  let h = now.getHours(), min = String(now.getMinutes()).padStart(2, '0');
-  const ampm = h >= 12 ? 'pm' : 'am';
-  h = h % 12 || 12;
-  return String(h).padStart(2, '0') + ':' + min + ' ' + ampm;
+  const now=new Date(); let h=now.getHours(),min=String(now.getMinutes()).padStart(2,'0');
+  const ampm=h>=12?'pm':'am'; h=h%12||12;
+  return String(h).padStart(2,'0')+':'+min+' '+ampm;
 }
 
-/**
- * toInputDate — convert any date string to "YYYY-MM-DD" for <input type="date">.
- * Works with DD/MM/YYYY, YYYY-MM-DD, ISO timestamps, empty/null values.
- */
-function toInputDate(dateStr) {
-  if (!dateStr) return '';
-  const dt = parseLocalDate(dateStr);
-  if (isNaN(dt)) return '';
-  const yyyy = dt.getFullYear();
-  const mm   = String(dt.getMonth() + 1).padStart(2, '0');
-  const dd   = String(dt.getDate()).padStart(2, '0');
-  return yyyy + '-' + mm + '-' + dd;
+function toInputDate(v) {
+  if (!v) return '';
+  const dt=parseLocalDate(v); if (isNaN(dt)) return '';
+  return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');
 }
 
-/**
- * normalisePulledDb — called immediately after pulling from Google Sheets.
- * Converts ALL date fields to "DD/MM/YYYY" and time fields to "HH:MM am/pm"
- * across every module, handling whatever Google Sheets may have sent.
- */
 function normalisePulledDb(db) {
-  const DATE_FIELDS = {
-    inward:         ['Date'],
-    outward:        ['Date', 'DeliveryDate'],
-    repairs:        ['ReceivedDate', 'ReceivedDateReturn'],
-    customOrders:   ['ReceivedDate', 'ReturnReceivedDate'],
-    wholesale:      ['Date'],
-    purchaseOrders: ['DateOfPurchase', 'OrderDate', 'ExpectedDate', 'ReceivedDate'],
-    stockMovement:  ['Date'],
-  };
-  const TIME_FIELDS = ['Time', 'ReceivedTime'];
-
-  Object.entries(DATE_FIELDS).forEach(([tab, fields]) => {
+  const DF={'inward':['Date'],'outward':['Date','DeliveryDate'],'repairs':['ReceivedDate','ReceivedDateReturn'],'customOrders':['ReceivedDate','ReturnReceivedDate'],'wholesale':['Date'],'purchaseOrders':['DateOfPurchase','OrderDate','ExpectedDate','ReceivedDate'],'stockMovement':['Date']};
+  Object.entries(DF).forEach(([tab,fields])=>{
     if (!Array.isArray(db[tab])) return;
-    db[tab].forEach(row => {
-      fields.forEach(field => {
-        const v = row[field];
-        if (v === undefined || v === null || v === '') return;
-        // Already correct DD/MM/YYYY — skip
-        if (typeof v === 'string' && /^\d{2}\/\d{2}\/\d{4}$/.test(v.trim())) return;
-        row[field] = fmtDate(v);
+    db[tab].forEach(row=>{
+      fields.forEach(f=>{
+        const v=row[f]; if (!v&&v!==0) return;
+        if (typeof v==='string'&&/^\d{2}\/\d{2}\/\d{4}$/.test(v.trim())) return;
+        row[f]=fmtDate(v);
       });
-      // Normalise time fields
-      TIME_FIELDS.forEach(tf => {
-        const v = row[tf];
-        if (v === undefined || v === null || v === '') return;
-        // Already "HH:MM am/pm" — skip
-        if (typeof v === 'string' && /^\d{1,2}:\d{2}\s*(am|pm)$/i.test(v.trim())) return;
-        // Fraction-of-day number (Google Sheets pure time)
-        if (typeof v === 'number' && v > 0 && v < 1) {
-          const totalMins = Math.round(v * 24 * 60);
-          let h = Math.floor(totalMins / 60) % 24;
-          const min = String(totalMins % 60).padStart(2, '0');
-          const ampm = h >= 12 ? 'pm' : 'am';
-          h = h % 12 || 12;
-          row[tf] = String(h).padStart(2, '0') + ':' + min + ' ' + ampm;
-          return;
+      ['Time','ReceivedTime'].forEach(tf=>{
+        const v=row[tf]; if (!v&&v!==0) return;
+        if (typeof v==='string'&&/^\d{1,2}:\d{2}\s*(am|pm)$/i.test(v.trim())) return;
+        if (typeof v==='number'&&v>0&&v<1){
+          const m=Math.round(v*1440);let h=Math.floor(m/60)%24;
+          const mn=String(m%60).padStart(2,'0'),ap=h>=12?'pm':'am';h=h%12||12;
+          row[tf]=String(h).padStart(2,'0')+':'+mn+' '+ap;return;
         }
-        // ISO timestamp or Date object with time
-        if (v instanceof Date || (typeof v === 'string' && v.includes('T'))) {
-          const dt = new Date(v);
-          if (!isNaN(dt)) {
-            let h = dt.getUTCHours(), min = String(dt.getUTCMinutes()).padStart(2, '0');
-            const ampm = h >= 12 ? 'pm' : 'am';
-            h = h % 12 || 12;
-            row[tf] = String(h).padStart(2, '0') + ':' + min + ' ' + ampm;
-          }
+        if (v instanceof Date||(typeof v==='string'&&v.includes('T'))){
+          const dt=new Date(v);if (!isNaN(dt)){let h=dt.getUTCHours();const mn=String(dt.getUTCMinutes()).padStart(2,'0'),ap=h>=12?'pm':'am';h=h%12||12;row[tf]=String(h).padStart(2,'0')+':'+mn+' '+ap;}
         }
       });
     });
@@ -3013,7 +2980,7 @@ function editInward(slNo) {
   if (!r) return;
   editingId = slNo;
   document.getElementById('inwardModalTitle').textContent = 'Edit Inward Entry';
-  document.getElementById('in_date').value         = toInputDate(r.Date);
+  document.getElementById('in_date').value         = r.Date ? toInputDate(r.Date);
   document.getElementById('in_time').value         = r.Time||'';
   document.getElementById('in_invoice').value      = r.InvoiceNo||'';
   document.getElementById('in_type').value         = r.TypeOfProduct||'';
@@ -3120,7 +3087,7 @@ function editOutward(slNo) {
   if (!r) return;
   editingId = slNo;
   document.getElementById('outwardModalTitle').textContent = 'Edit Outward Entry';
-  document.getElementById('out_date').value     = toInputDate(r.Date);
+  document.getElementById('out_date').value     = r.Date ? toInputDate(r.Date);
   document.getElementById('out_time').value     = r.Time||'';
   document.getElementById('out_invoice').value  = r.InvoiceNo||'';
   document.getElementById('out_type').value     = r.TypeOfProduct||'';
@@ -3133,7 +3100,7 @@ function editOutward(slNo) {
   document.getElementById('out_receiver').value = r.ReceiverName||'';
   document.getElementById('out_awb').value      = r.AWBNoMobileNo||'';
   document.getElementById('out_status').value   = r.Status||'Dispatched';
-  document.getElementById('out_deliverydate').value = toInputDate(r.DeliveryDate);
+  document.getElementById('out_deliverydate').value = r.DeliveryDate ? toInputDate(r.DeliveryDate);
   document.getElementById('out_accessories').value = r.AccessoriesDetails||'';
   openModal('outwardModal');
 }
@@ -3270,7 +3237,7 @@ function editRepair(slNo) {
   if (!r) return;
   editingId = slNo;
   document.getElementById('repairModalTitle').textContent = `Edit Job — JOB-${String(slNo).padStart(4,'0')}`;
-  document.getElementById('rep_date').value           = toInputDate(r.ReceivedDate);
+  document.getElementById('rep_date').value           = r.ReceivedDate ? toInputDate(r.ReceivedDate);
   document.getElementById('rep_time').value           = r.ReceivedTime||'';
   document.getElementById('rep_status').value         = r.JobStatus||'Pending';
   document.getElementById('rep_company').value        = r.CompanyName||'';
@@ -3293,7 +3260,7 @@ function editRepair(slNo) {
   document.getElementById('rep_person').value         = r.PersonName||'';
   document.getElementById('rep_repairtype').value     = r.TypeOfRepair||'General Service';
   document.getElementById('rep_replaced').value       = r.ReplacedDeviceDetails||'';
-  document.getElementById('rep_returndate').value     = toInputDate(r.ReceivedDateReturn);
+  document.getElementById('rep_returndate').value     = r.ReceivedDateReturn ? toInputDate(r.ReceivedDateReturn);
   document.getElementById('rep_remarks').value        = r.Remarks||'';
   openModal('repairModal');
 }
@@ -3446,7 +3413,7 @@ function editCustomOrder(slNo) {
   if (!r) return;
   editingId = slNo;
   document.getElementById('customOrderModalTitle').textContent = `Edit Order — JOB-${String(slNo).padStart(4,'0')}`;
-  document.getElementById('co_date').value      = toInputDate(r.ReceivedDate);
+  document.getElementById('co_date').value      = r.ReceivedDate ? toInputDate(r.ReceivedDate);
   document.getElementById('co_time').value      = r.ReceivedTime||'';
   document.getElementById('co_status').value    = r.JobStatus||'Received';
   document.getElementById('co_company').value   = r.CompanyName||'';
@@ -3461,7 +3428,7 @@ function editCustomOrder(slNo) {
   document.getElementById('co_total').value     = r.TotalCost||0;
   document.getElementById('co_discount').value  = r.DiscountPercent||0;
   document.getElementById('co_orderstatus').value = r.OrderStatus||'Pending';
-  document.getElementById('co_returndate').value  = toInputDate(r.ReturnReceivedDate);
+  document.getElementById('co_returndate').value  = r.ReturnReceivedDate ? toInputDate(r.ReturnReceivedDate);
   document.getElementById('co_remarks').value   = r.Remarks||'';
   openModal('customOrderModal');
 }
@@ -3559,7 +3526,7 @@ function editWholesale(slNo) {
   const r = all.find(x => String(x['SL.NO']) === String(slNo));
   if (!r) return;
   editingId = slNo;
-  document.getElementById('ws_date').value       = toInputDate(r.Date);
+  document.getElementById('ws_date').value       = r.Date ? toInputDate(r.Date);
   document.getElementById('ws_dealer').value     = r.DealerName||'';
   document.getElementById('ws_contact').value    = r.ContactPerson||'';
   document.getElementById('ws_product').value    = r.Product||'';
@@ -4218,12 +4185,8 @@ async function pullFromSheets() {
     });
     const data = await resp.json();
     if (data.success && data.db) {
-      // ── Normalise ALL date & time fields received from Google Sheets ──
-      // Google Sheets sends Date cells as ISO timestamps or JS Date objects.
-      // normalisePulledDb() converts them all to "DD/MM/YYYY" / "HH:MM am/pm"
-      // BEFORE saving to localStorage so every module displays correctly.
+      // Normalise all date/time fields BEFORE saving (Google Sheets sends Date objects)
       const normDb = normalisePulledDb(data.db);
-
       // Deep-merge settings, then assign the rest
       if (normDb.settings) Object.assign(demoData.settings, normDb.settings);
       const { settings: _s, ...rest } = normDb;
@@ -4387,7 +4350,7 @@ document.addEventListener('keydown', e => {
         }
         startClock();
         navTo('dashboard');
-        loadDashboard();
+        autoSyncOnLogin(); // Auto-pull on session restore too
       } catch(se) {
         sessionStorage.removeItem('clearsound_session');
       }

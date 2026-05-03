@@ -2295,6 +2295,25 @@ function jsonResponse(obj) {
 // Storage key prefix for localStorage database
 const DB_KEY = 'clearsound_db_data';
 
+// ── GOOGLE SHEETS CONFIG (defined early so login & autoSync can use it) ──────
+const GS_CONFIG_KEY = 'clearsound_gs_config';
+const DEFAULT_GS_URL = 'https://script.google.com/macros/s/AKfycbzVgSPsmsPajtv4BN8c_E0pT-XFjfofaLoMHbaFh92ouy2Zx57jrZfcDqVWYlrimgqb_g/exec';
+
+function getGsConfig() {
+  try {
+    const raw = localStorage.getItem(GS_CONFIG_KEY);
+    if (raw) {
+      const stored = JSON.parse(raw);
+      if (stored) { stored.url = DEFAULT_GS_URL; stored.connected = true; return stored; }
+    }
+  } catch(e) {}
+  return { url: DEFAULT_GS_URL, connected: true };
+}
+
+function saveGsConfigStore(cfg) {
+  localStorage.setItem(GS_CONFIG_KEY, JSON.stringify(cfg));
+}
+
 // ── SESSION ──────────────────────────────────────────────────
 let currentUser = null;
 let editingId   = null;
@@ -4051,25 +4070,7 @@ function importDatabase(event) {
 
 // ── GOOGLE SHEETS ENGINE ─────────────────────────────────────
 
-const GS_CONFIG_KEY = 'clearsound_gs_config';
-const DEFAULT_GS_URL = 'https://script.google.com/macros/s/AKfycbzVgSPsmsPajtv4BN8c_E0pT-XFjfofaLoMHbaFh92ouy2Zx57jrZfcDqVWYlrimgqb_g/exec';
-// ── REAL-TIME AUTO-SYNC: API is always connected, no toggle required ──
-
-function getGsConfig() {
-  // Real-time sync is always on — always return the live API URL as connected
-  try {
-    const raw = localStorage.getItem(GS_CONFIG_KEY);
-    if (raw) {
-      const stored = JSON.parse(raw);
-      if (stored) { stored.url = DEFAULT_GS_URL; stored.connected = true; return stored; }
-    }
-  } catch(e) {}
-  return { url: DEFAULT_GS_URL, connected: true };
-}
-
-function saveGsConfigStore(cfg) {
-  localStorage.setItem(GS_CONFIG_KEY, JSON.stringify(cfg));
-}
+// GS config moved to top of script — see DB_KEY section
 
 function loadGsSettingsUI() {
   const cfg = getGsConfig();

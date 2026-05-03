@@ -2999,7 +2999,7 @@ function editInward(slNo) {
   if (!r) return;
   editingId = slNo;
   document.getElementById('inwardModalTitle').textContent = 'Edit Inward Entry';
-  document.getElementById('in_date').value         = r.Date ? toInputDate(r.Date);
+  document.getElementById('in_date').value         = toInputDate(r.Date);
   document.getElementById('in_time').value         = r.Time||'';
   document.getElementById('in_invoice').value      = r.InvoiceNo||'';
   document.getElementById('in_type').value         = r.TypeOfProduct||'';
@@ -3106,7 +3106,7 @@ function editOutward(slNo) {
   if (!r) return;
   editingId = slNo;
   document.getElementById('outwardModalTitle').textContent = 'Edit Outward Entry';
-  document.getElementById('out_date').value     = r.Date ? toInputDate(r.Date);
+  document.getElementById('out_date').value     = toInputDate(r.Date);
   document.getElementById('out_time').value     = r.Time||'';
   document.getElementById('out_invoice').value  = r.InvoiceNo||'';
   document.getElementById('out_type').value     = r.TypeOfProduct||'';
@@ -3119,7 +3119,7 @@ function editOutward(slNo) {
   document.getElementById('out_receiver').value = r.ReceiverName||'';
   document.getElementById('out_awb').value      = r.AWBNoMobileNo||'';
   document.getElementById('out_status').value   = r.Status||'Dispatched';
-  document.getElementById('out_deliverydate').value = r.DeliveryDate ? toInputDate(r.DeliveryDate);
+  document.getElementById('out_deliverydate').value = toInputDate(r.DeliveryDate);
   document.getElementById('out_accessories').value = r.AccessoriesDetails||'';
   openModal('outwardModal');
 }
@@ -3256,7 +3256,7 @@ function editRepair(slNo) {
   if (!r) return;
   editingId = slNo;
   document.getElementById('repairModalTitle').textContent = `Edit Job — JOB-${String(slNo).padStart(4,'0')}`;
-  document.getElementById('rep_date').value           = r.ReceivedDate ? toInputDate(r.ReceivedDate);
+  document.getElementById('rep_date').value           = toInputDate(r.ReceivedDate);
   document.getElementById('rep_time').value           = r.ReceivedTime||'';
   document.getElementById('rep_status').value         = r.JobStatus||'Pending';
   document.getElementById('rep_company').value        = r.CompanyName||'';
@@ -3279,7 +3279,7 @@ function editRepair(slNo) {
   document.getElementById('rep_person').value         = r.PersonName||'';
   document.getElementById('rep_repairtype').value     = r.TypeOfRepair||'General Service';
   document.getElementById('rep_replaced').value       = r.ReplacedDeviceDetails||'';
-  document.getElementById('rep_returndate').value     = r.ReceivedDateReturn ? toInputDate(r.ReceivedDateReturn);
+  document.getElementById('rep_returndate').value     = toInputDate(r.ReceivedDateReturn);
   document.getElementById('rep_remarks').value        = r.Remarks||'';
   openModal('repairModal');
 }
@@ -3432,7 +3432,7 @@ function editCustomOrder(slNo) {
   if (!r) return;
   editingId = slNo;
   document.getElementById('customOrderModalTitle').textContent = `Edit Order — JOB-${String(slNo).padStart(4,'0')}`;
-  document.getElementById('co_date').value      = r.ReceivedDate ? toInputDate(r.ReceivedDate);
+  document.getElementById('co_date').value      = toInputDate(r.ReceivedDate);
   document.getElementById('co_time').value      = r.ReceivedTime||'';
   document.getElementById('co_status').value    = r.JobStatus||'Received';
   document.getElementById('co_company').value   = r.CompanyName||'';
@@ -3447,7 +3447,7 @@ function editCustomOrder(slNo) {
   document.getElementById('co_total').value     = r.TotalCost||0;
   document.getElementById('co_discount').value  = r.DiscountPercent||0;
   document.getElementById('co_orderstatus').value = r.OrderStatus||'Pending';
-  document.getElementById('co_returndate').value  = r.ReturnReceivedDate ? toInputDate(r.ReturnReceivedDate);
+  document.getElementById('co_returndate').value  = toInputDate(r.ReturnReceivedDate);
   document.getElementById('co_remarks').value   = r.Remarks||'';
   openModal('customOrderModal');
 }
@@ -3545,7 +3545,7 @@ function editWholesale(slNo) {
   const r = all.find(x => String(x['SL.NO']) === String(slNo));
   if (!r) return;
   editingId = slNo;
-  document.getElementById('ws_date').value       = r.Date ? toInputDate(r.Date);
+  document.getElementById('ws_date').value       = toInputDate(r.Date);
   document.getElementById('ws_dealer').value     = r.DealerName||'';
   document.getElementById('ws_contact').value    = r.ContactPerson||'';
   document.getElementById('ws_product').value    = r.Product||'';

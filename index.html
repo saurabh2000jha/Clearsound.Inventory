@@ -1706,7 +1706,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
             <span id="gsStatusText">Not connected — enter your Google Apps Script URL below to enable live sync.</span>
           </div>
 
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:20px">
+          <div style="display:grid;grid-template-columns:1fr;gap:20px;margin-bottom:20px">
 
             <!-- Setup Card -->
             <div class="card" style="margin-bottom:0">
@@ -1725,48 +1725,17 @@ textarea.form-control { resize: vertical; min-height: 80px; }
                   <p style="font-size:11px;color:var(--text-muted);margin-top:5px">The long ID in your Google Sheet URL between /d/ and /edit</p>
                 </div>
                 <div style="display:flex;gap:10px;flex-wrap:wrap">
-                  <button class="btn btn-primary" onclick="saveGsConfig()"><i class="fas fa-save"></i> Save & Test Connection</button>
-                  <button class="btn btn-secondary" onclick="clearGsConfig()" style="color:var(--red);border-color:rgba(255,90,101,0.3)"><i class="fas fa-times"></i> Disconnect</button>
+                  <button class="btn btn-primary" onclick="saveGsConfig()"><i class="fas fa-save"></i> Save &amp; Test Connection</button>
+                </div>
+                <div style="font-size:11px;color:var(--text-dim);margin-top:10px">
+                  <i class="fas fa-clock"></i> Last synced: <span id="gsLastSync">Never</span>
                 </div>
               </div>
             </div>
 
-            <!-- Sync Card -->
-            <div class="card" style="margin-bottom:0">
-              <div class="card-header">
-                <div class="card-title"><i class="fas fa-sync-alt" style="color:var(--teal)"></i> &nbsp;Sync Data</div>
-              </div>
-              <div style="display:flex;flex-direction:column;gap:12px">
-                <div style="padding:14px;background:var(--glass);border-radius:var(--radius-sm);border:1px solid var(--border)">
-                  <div style="font-size:13px;font-weight:700;color:var(--teal);margin-bottom:6px"><i class="fas fa-upload"></i> &nbsp;Push to Google Sheets</div>
-                  <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Upload all local data (Inward, Outward, Repairs, etc.) to your Google Sheet. This overwrites existing sheet data.</p>
-                  <button class="btn btn-primary btn-sm" onclick="pushToSheets()"><i class="fas fa-cloud-upload-alt"></i> Push All Data</button>
-                </div>
-                <div style="padding:14px;background:var(--glass);border-radius:var(--radius-sm);border:1px solid var(--border)">
-                  <div style="font-size:13px;font-weight:700;color:var(--amber);margin-bottom:6px"><i class="fas fa-download"></i> &nbsp;Pull from Google Sheets</div>
-                  <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px">Download all data from your Google Sheet into the app. Replaces current local data.</p>
-                  <button class="btn btn-secondary btn-sm" onclick="pullFromSheets()" style="color:var(--amber);border-color:rgba(244,168,58,0.3)"><i class="fas fa-cloud-download-alt"></i> Pull All Data</button>
-                </div>
-                <div style="font-size:11px;color:var(--text-dim);padding:8px 0">
-                  <i class="fas fa-clock"></i> Last sync: <span id="gsLastSync">Never</span>
-                </div>
-              </div>
-            </div>
-          </div>
+                      </div>
 
-          <!-- Auto-Sync option -->
-          <div class="card" style="margin-bottom:20px">
-            <div class="card-header">
-              <div class="card-title"><i class="fas fa-magic" style="color:var(--purple)"></i> &nbsp;Auto-Sync Setting</div>
-            </div>
-            <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-              <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px">
-                <input type="checkbox" id="gsAutoSync" onchange="saveGsAutoSync(this.checked)" style="width:18px;height:18px;accent-color:var(--teal)">
-                <span>Auto-sync after every Add / Edit / Delete (requires active connection)</span>
-              </label>
-              <p style="font-size:12px;color:var(--text-muted);margin:0">When enabled, every change is immediately saved to Google Sheets. May be slower on poor internet.</p>
-            </div>
-          </div>
+<input type="hidden" id="gsAutoSync" value="1">
 
           <!-- Setup Guide -->
           <div class="card">
@@ -1791,160 +1760,369 @@ textarea.form-control { resize: vertical; min-height: 80px; }
                     <div style="font-size:12px;font-weight:700;color:var(--text-main)"><i class="fas fa-code"></i> &nbsp;Google Apps Script Code (copy all)</div>
                     <button class="btn btn-secondary btn-sm" onclick="copyAppsScript()"><i class="fas fa-copy"></i> Copy</button>
                   </div>
-                  <pre id="appsScriptCode" style="background:#0a1020;border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;font-size:11px;font-family:'DM Mono',monospace;color:#a8c0ff;overflow-x:auto;white-space:pre-wrap;max-height:400px;overflow-y:auto">const SHEET_TABS = ['inward','outward','repairs','customOrders','wholesale','purchaseOrders','suppliers','stock','stockMovement','users','settings'];
+                  <pre id="appsScriptCode" style="background:#0a1020;border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px;font-size:11px;font-family:'DM Mono',monospace;color:#a8c0ff;overflow-x:auto;white-space:pre-wrap;max-height:400px;overflow-y:auto">// ═══════════════════════════════════════════════════════════════════════════
+//  ClearSound Hearing Clinic — Google Apps Script (Backend API)
+//  FULLY CORRECTED VERSION
+//
+//  FIXES APPLIED:
+//  1. pullAll     — all Date cells → "DD/MM/YYYY", time cells → "HH:MM am/pm"
+//  2. pushAll     — all columns set to plain-text format (@STRING@) so Google
+//                   Sheets NEVER auto-converts "DD/MM/YYYY" back into a Date
+//  3. appendRow   — row written + forced to plain-text
+//  4. updateRow   — row updated + forced to plain-text
+//  5. getSettings — Date values in settings sheet also sanitised
+//  6. deleteRow   — handles numeric vs string SL.NO comparison correctly
+//  7. Error msgs  — richer error messages with stack trace for debugging
+// ═══════════════════════════════════════════════════════════════════════════
+
+var SHEET_TABS = [
+  'inward', 'outward', 'repairs', 'customOrders',
+  'wholesale', 'purchaseOrders', 'suppliers',
+  'stock', 'stockMovement', 'users', 'settings'
+];
+
+// ─── DATE / TIME HELPERS ────────────────────────────────────────────────────
+
+/**
+ * Convert a Google Sheets Date object to "DD/MM/YYYY" string.
+ * Prevents the value from being serialised as an ISO timestamp in JSON.
+ */
+function formatDateDMY(d) {
+  if (!(d instanceof Date) || isNaN(d.getTime())) return '';
+  var dd   = String(d.getDate()).padStart(2, '0');
+  var mm   = String(d.getMonth() + 1).padStart(2, '0');
+  var yyyy = String(d.getFullYear());
+  return dd + '/' + mm + '/' + yyyy;
+}
+
+/**
+ * Convert a Google Sheets time value to "HH:MM am/pm" string.
+ * Google Sheets stores pure-time cells as:
+ *   a decimal fraction  (0.0 = midnight, 0.5 = noon, 0.9999 = 23:59)
+ *   OR a Date object whose date part is 30 Dec 1899 (Sheets internal epoch)
+ */
+function formatTimeAmPm(v) {
+  var totalMinutes;
+  if (typeof v === 'number') {
+    totalMinutes = Math.round(v * 24 * 60);
+  } else if (v instanceof Date &amp;&amp; !isNaN(v.getTime())) {
+    totalMinutes = v.getHours() * 60 + v.getMinutes();
+  } else {
+    return (v !== null &amp;&amp; v !== undefined) ? String(v) : '';
+  }
+  var h    = Math.floor(totalMinutes / 60) % 24;
+  var min  = String(totalMinutes % 60).padStart(2, '0');
+  var ampm = h &gt;= 12 ? 'pm' : 'am';
+  h = h % 12 || 12;
+  return String(h).padStart(2, '0') + ':' + min + ' ' + ampm;
+}
+
+/**
+ * Master cell-value sanitiser applied to EVERY value returned to the web app.
+ *   Date with no H/M/S  -&gt;  "DD/MM/YYYY"
+ *   Date with H or M    -&gt;  "HH:MM am/pm"
+ *   Number 0 &lt; n &lt; 1    -&gt;  "HH:MM am/pm"  (pure time fraction)
+ *   Anything else       -&gt;  value as-is
+ */
+function sanitiseCell(v) {
+  if (v === null || v === undefined) return '';
+  if (v instanceof Date) {
+    if (isNaN(v.getTime())) return '';
+    var h = v.getHours(), m = v.getMinutes(), s = v.getSeconds();
+    if (h === 0 &amp;&amp; m === 0 &amp;&amp; s === 0) return formatDateDMY(v);
+    return formatTimeAmPm(v);
+  }
+  if (typeof v === 'number' &amp;&amp; v &gt; 0 &amp;&amp; v &lt; 1) return formatTimeAmPm(v);
+  return v;
+}
+
+/**
+ * Sanitise a value for writing TO Google Sheets.
+ * Keeps strings as strings (so "DD/MM/YYYY" stays text).
+ * Keeps numbers/booleans native so numeric fields store correctly.
+ * Converts null/undefined to empty string.
+ */
+function sanitiseForWrite(v) {
+  if (v === null || v === undefined) return '';
+  return v;
+}
+
+// ─── MAIN ENTRY POINT ───────────────────────────────────────────────────────
 
 function doPost(e) {
   try {
-    const params = JSON.parse(e.postData.contents);
-    const action = params.action;
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    var params = JSON.parse(e.postData.contents);
+    var action = params.action;
+    var ss     = SpreadsheetApp.getActiveSpreadsheet();
 
-    // ── PING ──────────────────────────────────────────────────
-    if (action === 'ping') return jsonResponse({ success:true, message:'Connected!' });
+    // ── PING ──────────────────────────────────────────────────────────────
+    if (action === 'ping') {
+      return jsonResponse({ success: true, message: 'Connected!' });
+    }
 
-    // ── PUSH ALL (overwrite entire DB) ────────────────────────
+    // ── PUSH ALL ──────────────────────────────────────────────────────────
+    // Overwrites every sheet with data from the web app.
+    // After writing, the entire data range is formatted as plain text
+    // so Google Sheets never auto-converts "DD/MM/YYYY" back into a Date.
     if (action === 'pushAll') {
-      const db = params.db;
-      SHEET_TABS.forEach(tab => {
-        let sheet = ss.getSheetByName(tab);
-        if (!sheet) sheet = ss.insertSheet(tab);
+      var db = params.db;
+      if (!db) return jsonResponse({ success: false, error: 'No db payload received' });
+
+      SHEET_TABS.forEach(function(tab) {
+        var sheet = ss.getSheetByName(tab) || ss.insertSheet(tab);
         sheet.clearContents();
-        const data = db[tab];
+        var data = db[tab];
         if (!data) return;
+
         if (tab === 'settings') {
-          const entries = Object.entries(data);
+          var entries = Object.entries(data);
           if (!entries.length) return;
-          sheet.getRange(1,1,1,2).setValues([['Key','Value']]);
-          const rows = entries.map(([k,v]) => [k, v !== undefined && v !== null ? String(v) : '']);
-          sheet.getRange(2,1,rows.length,2).setValues(rows);
-        } else {
-          if (!data.length) return;
-          const keys = Object.keys(data[0]);
-          sheet.getRange(1,1,1,keys.length).setValues([keys]);
-          const rows = data.map(r => keys.map(k => r[k] !== undefined ? r[k] : ''));
-          sheet.getRange(2,1,rows.length,keys.length).setValues(rows);
-        }
-      });
-      return jsonResponse({ success:true });
-    }
-
-    // ── PULL ALL (read entire DB) ──────────────────────────────
-    if (action === 'pullAll') {
-      const db = {};
-      SHEET_TABS.forEach(tab => {
-        const sheet = ss.getSheetByName(tab);
-        if (!sheet) { db[tab] = tab === 'settings' ? {} : []; return; }
-        const vals = sheet.getDataRange().getValues();
-        if (!vals.length || !vals[0].length) { db[tab] = tab === 'settings' ? {} : []; return; }
-        if (tab === 'settings') {
-          const obj = {};
-          for (let i = 1; i < vals.length; i++) obj[vals[i][0]] = vals[i][1];
-          db[tab] = obj;
-        } else {
-          const headers = vals[0];
-          db[tab] = vals.slice(1).map(row => {
-            const r = {};
-            headers.forEach((h,i) => r[h] = row[i] !== undefined ? row[i] : '');
-            return r;
+          sheet.getRange(1, 1, 1, 2).setValues([['Key', 'Value']]);
+          var rows = entries.map(function(pair) {
+            return [String(pair[0]), sanitiseForWrite(pair[1])];
           });
+          var range = sheet.getRange(2, 1, rows.length, 2);
+          range.setNumberFormat('@STRING@');
+          range.setValues(rows);
+
+        } else {
+          if (!Array.isArray(data) || !data.length) return;
+          var keys = Object.keys(data[0]);
+          if (!keys.length) return;
+          sheet.getRange(1, 1, 1, keys.length).setValues([keys]);
+          var dataRows = data.map(function(r) {
+            return keys.map(function(k) { return sanitiseForWrite(r[k]); });
+          });
+          var dataRange = sheet.getRange(2, 1, dataRows.length, keys.length);
+          dataRange.setNumberFormat('@STRING@');
+          dataRange.setValues(dataRows);
         }
       });
-      return jsonResponse({ success:true, db });
+      return jsonResponse({ success: true });
     }
 
-    // ── SAVE SETTINGS ────────────────────────────────────────
+    // ── PULL ALL ──────────────────────────────────────────────────────────
+    // Reads every sheet and returns all data to the web app.
+    // Every cell value passes through sanitiseCell() so Date objects and
+    // time fractions become plain "DD/MM/YYYY" / "HH:MM am/pm" strings.
+    if (action === 'pullAll') {
+      var db = {};
+      SHEET_TABS.forEach(function(tab) {
+        var sheet = ss.getSheetByName(tab);
+        if (!sheet) {
+          db[tab] = (tab === 'settings') ? {} : [];
+          return;
+        }
+        var vals = sheet.getDataRange().getValues();
+        if (!vals || !vals.length || !vals[0].length) {
+          db[tab] = (tab === 'settings') ? {} : [];
+          return;
+        }
+
+        if (tab === 'settings') {
+          var obj = {};
+          for (var i = 1; i &lt; vals.length; i++) {
+            var key = vals[i][0];
+            var val = vals[i][1];
+            if (key !== '' &amp;&amp; key !== null &amp;&amp; key !== undefined) {
+              obj[String(key)] = sanitiseCell(val);
+            }
+          }
+          db[tab] = obj;
+
+        } else {
+          var headers = vals[0].map(function(h) { return String(h); });
+          db[tab] = vals.slice(1)
+            .filter(function(row) {
+              // Drop completely empty rows (blanks at bottom of sheet)
+              return row.some(function(cell) {
+                return cell !== '' &amp;&amp; cell !== null &amp;&amp; cell !== undefined;
+              });
+            })
+            .map(function(row) {
+              var r = {};
+              headers.forEach(function(h, i) {
+                r[h] = sanitiseCell(row[i]);
+              });
+              return r;
+            });
+        }
+      });
+      return jsonResponse({ success: true, db: db });
+    }
+
+    // ── SAVE SETTINGS ─────────────────────────────────────────────────────
     if (action === 'saveSettings') {
-      const data = params.data;
-      if (!data) return jsonResponse({ success:false, error:'No data provided' });
-      let sheet = ss.getSheetByName('settings');
-      if (!sheet) sheet = ss.insertSheet('settings');
+      var data = params.data;
+      if (!data) return jsonResponse({ success: false, error: 'No data provided' });
+
+      var sheet = ss.getSheetByName('settings') || ss.insertSheet('settings');
       sheet.clearContents();
-      sheet.getRange(1,1,1,2).setValues([['Key','Value']]);
-      const rows = Object.entries(data).map(([k,v]) => [k, v !== undefined && v !== null ? String(v) : '']);
-      if (rows.length > 0) sheet.getRange(2,1,rows.length,2).setValues(rows);
-      return jsonResponse({ success:true });
+      sheet.getRange(1, 1, 1, 2).setValues([['Key', 'Value']]);
+
+      var entries = Object.entries(data);
+      if (entries.length &gt; 0) {
+        var rows = entries.map(function(pair) {
+          return [String(pair[0]), sanitiseForWrite(pair[1])];
+        });
+        var range = sheet.getRange(2, 1, rows.length, 2);
+        range.setNumberFormat('@STRING@');
+        range.setValues(rows);
+      }
+      return jsonResponse({ success: true });
     }
 
-    // ── GET SETTINGS ─────────────────────────────────────────
+    // ── GET SETTINGS ──────────────────────────────────────────────────────
     if (action === 'getSettings') {
-      const sheet = ss.getSheetByName('settings');
-      if (!sheet) return jsonResponse({ success:true, data:{} });
-      const vals = sheet.getDataRange().getValues();
-      if (!vals || vals.length < 2) return jsonResponse({ success:true, data:{} });
-      const obj = {};
-      for (let i = 1; i < vals.length; i++) {
-        if (vals[i][0]) obj[vals[i][0]] = vals[i][1];
+      var sheet = ss.getSheetByName('settings');
+      if (!sheet) return jsonResponse({ success: true, data: {} });
+
+      var vals = sheet.getDataRange().getValues();
+      if (!vals || vals.length &lt; 2) return jsonResponse({ success: true, data: {} });
+
+      var obj = {};
+      for (var i = 1; i &lt; vals.length; i++) {
+        var key = vals[i][0];
+        if (key !== '' &amp;&amp; key !== null &amp;&amp; key !== undefined) {
+          obj[String(key)] = sanitiseCell(vals[i][1]);
+        }
       }
-      return jsonResponse({ success:true, data:obj });
+      return jsonResponse({ success: true, data: obj });
     }
 
-    // ── APPEND ROW ────────────────────────────────────────────
+    // ── APPEND ROW ────────────────────────────────────────────────────────
+    // Adds a new record to the named sheet.
+    // The new row is immediately reformatted as plain text so dates stay
+    // as "DD/MM/YYYY" strings rather than being parsed by Sheets.
     if (action === 'appendRow') {
-      const sheet = getOrCreateSheet(ss, params.tab);
-      const data = params.data;
-      const vals = sheet.getDataRange().getValues();
-      if (!vals.length || !vals[0].some(v => v !== '')) {
-        // Write header row first
-        const keys = Object.keys(data);
-        sheet.getRange(1,1,1,keys.length).setValues([keys]);
-        sheet.appendRow(keys.map(k => data[k] !== undefined ? data[k] : ''));
-      } else {
-        const keys = vals[0];
-        sheet.appendRow(keys.map(k => data[k] !== undefined ? data[k] : ''));
-      }
-      return jsonResponse({ success:true });
+      var tab  = params.tab;
+      var data = params.data;
+      if (!tab)  return jsonResponse({ success: false, error: 'Missing tab parameter' });
+      if (!data) return jsonResponse({ success: false, error: 'Missing data parameter' });
+
+      var sheet = getOrCreateSheet(ss, tab);
+      ensureHeader(sheet, data);
+
+      var lastCol  = sheet.getLastColumn();
+      var headers  = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+      var newRow   = headers.map(function(k) { return sanitiseForWrite(data[k]); });
+      sheet.appendRow(newRow);
+
+      var lastRow = sheet.getLastRow();
+      sheet.getRange(lastRow, 1, 1, headers.length).setNumberFormat('@STRING@');
+
+      return jsonResponse({ success: true });
     }
 
-    // ── UPDATE ROW ────────────────────────────────────────────
+    // ── UPDATE ROW ────────────────────────────────────────────────────────
     if (action === 'updateRow') {
-      const sheet = getOrCreateSheet(ss, params.tab);
-      const data = params.data;
-      const slNo = String(data['SL.NO']);
-      const vals = sheet.getDataRange().getValues();
-      const headers = vals[0];
-      const slIdx = headers.indexOf('SL.NO');
-      for (let i = 1; i < vals.length; i++) {
-        if (String(vals[i][slIdx]) === slNo) {
-          sheet.getRange(i+1,1,1,headers.length).setValues([headers.map(k => data[k] !== undefined ? data[k] : vals[i][headers.indexOf(k)])]);
-          return jsonResponse({ success:true });
+      var tab  = params.tab;
+      var data = params.data;
+      if (!tab)  return jsonResponse({ success: false, error: 'Missing tab parameter' });
+      if (!data) return jsonResponse({ success: false, error: 'Missing data parameter' });
+
+      var sheet   = getOrCreateSheet(ss, tab);
+      var slNo    = String(data['SL.NO']).trim();
+      var vals    = sheet.getDataRange().getValues();
+      var headers = vals[0];
+      var slIdx   = headers.indexOf('SL.NO');
+
+      if (slIdx === -1) {
+        return jsonResponse({ success: false, error: 'SL.NO column not found in sheet: ' + tab });
+      }
+
+      for (var i = 1; i &lt; vals.length; i++) {
+        if (String(vals[i][slIdx]).trim() === slNo) {
+          var updatedRow = headers.map(function(k, ki) {
+            return data[k] !== undefined &amp;&amp; data[k] !== null
+              ? sanitiseForWrite(data[k])
+              : sanitiseForWrite(vals[i][ki]);
+          });
+          var range = sheet.getRange(i + 1, 1, 1, headers.length);
+          range.setNumberFormat('@STRING@');
+          range.setValues([updatedRow]);
+          return jsonResponse({ success: true });
         }
       }
-      return jsonResponse({ success:false, error:'Row not found' });
+      return jsonResponse({ success: false, error: 'Row not found — SL.NO ' + slNo + ' in sheet: ' + tab });
     }
 
-    // ── DELETE ROW ────────────────────────────────────────────
+    // ── DELETE ROW ────────────────────────────────────────────────────────
     if (action === 'deleteRow') {
-      const sheet = getOrCreateSheet(ss, params.tab);
-      const slNo = String(params.slNo);
-      const vals = sheet.getDataRange().getValues();
-      const slIdx = vals[0].indexOf('SL.NO');
-      for (let i = 1; i < vals.length; i++) {
-        if (String(vals[i][slIdx]) === slNo) {
-          sheet.deleteRow(i+1);
-          return jsonResponse({ success:true });
+      var tab  = params.tab;
+      var slNo = String(params.slNo).trim();
+      if (!tab)  return jsonResponse({ success: false, error: 'Missing tab parameter' });
+      if (!slNo) return jsonResponse({ success: false, error: 'Missing slNo parameter' });
+
+      var sheet = getOrCreateSheet(ss, tab);
+      var vals  = sheet.getDataRange().getValues();
+      var slIdx = vals[0].indexOf('SL.NO');
+
+      if (slIdx === -1) {
+        return jsonResponse({ success: false, error: 'SL.NO column not found in sheet: ' + tab });
+      }
+
+      for (var i = 1; i &lt; vals.length; i++) {
+        if (String(vals[i][slIdx]).trim() === slNo) {
+          sheet.deleteRow(i + 1);
+          return jsonResponse({ success: true });
         }
       }
-      return jsonResponse({ success:false, error:'Row not found' });
+      return jsonResponse({ success: false, error: 'Row not found — SL.NO ' + slNo + ' in sheet: ' + tab });
     }
 
-    return jsonResponse({ success:false, error:'Unknown action: ' + action });
-  } catch(err) {
-    return jsonResponse({ success:false, error: err.message });
+    return jsonResponse({ success: false, error: 'Unknown action: ' + action });
+
+  } catch (err) {
+    return jsonResponse({
+      success: false,
+      error: err.message || 'Unknown error',
+      stack: err.stack  || ''
+    });
   }
 }
 
+// ─── GET (health check) ─────────────────────────────────────────────────────
 function doGet(e) {
-  return jsonResponse({ success:true, message:'ClearSound DB API is running!' });
+  return jsonResponse({ success: true, message: 'ClearSound DB API is running!' });
 }
 
+// ─── UTILITIES ──────────────────────────────────────────────────────────────
+
+/** Get an existing sheet or create it if missing */
 function getOrCreateSheet(ss, name) {
   return ss.getSheetByName(name) || ss.insertSheet(name);
 }
 
+/**
+ * Ensure a header row exists on the sheet.
+ * If the sheet is empty, writes header from the data object keys.
+ */
+function ensureHeader(sheet, data) {
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow === 0 || lastCol === 0) {
+    var keys = Object.keys(data);
+    sheet.getRange(1, 1, 1, keys.length).setValues([keys]);
+    return;
+  }
+  var firstRow = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var isEmpty  = firstRow.every(function(v) {
+    return v === '' || v === null || v === undefined;
+  });
+  if (isEmpty) {
+    var keys = Object.keys(data);
+    sheet.getRange(1, 1, 1, keys.length).setValues([keys]);
+  }
+}
+
+/** Return a JSON response with correct MIME type */
 function jsonResponse(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj))
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
     .setMimeType(ContentService.MimeType.JSON);
-}</pre>
+}
+</pre>
                 </div>
               </div>
             </div>
@@ -2471,11 +2649,9 @@ function startApp() {
 async function autoSyncOnLogin() {
   const cfg = getGsConfig();
   if (!cfg || !cfg.url) {
-    // No Sheets connected — just load from localStorage
     loadDashboard();
     return;
   }
-  // Show a non-blocking loading indicator
   showLoader();
   try {
     const resp = await fetch(cfg.url, {
@@ -2485,7 +2661,6 @@ async function autoSyncOnLogin() {
     });
     const data = await resp.json();
     if (data.success && data.db) {
-      // Normalise all date/time fields from Sheets before saving
       const normDb = normalisePulledDb(data.db);
       if (normDb.settings) Object.assign(demoData.settings, normDb.settings);
       const { settings: _s, ...rest } = normDb;
@@ -2495,13 +2670,15 @@ async function autoSyncOnLogin() {
       localStorage.setItem('clearsound_gs_lastsync', now);
       const el = document.getElementById('gsLastSync');
       if (el) el.textContent = now;
+      // Flash LIVE SYNC badge
+      const badge = document.getElementById('liveSyncBadge');
+      if (badge) { badge.classList.remove('sync-flash'); void badge.offsetWidth; badge.classList.add('sync-flash'); }
     }
   } catch(err) {
-    // Sheets unreachable — silently use local data (do not toast on login)
-    console.warn('[AutoSync] Login pull failed, using local data:', err.message);
+    console.warn('[LiveSync] Login pull failed, using local data:', err.message);
   } finally {
     hideLoader();
-    loadDashboard(); // Always load dashboard after sync attempt
+    loadDashboard();
   }
 }
 
@@ -4074,14 +4251,13 @@ function importDatabase(event) {
 
 function loadGsSettingsUI() {
   const cfg = getGsConfig();
-  // Always show the live API URL — real-time sync is always on
-  document.getElementById('gsScriptUrl').value = DEFAULT_GS_URL;
-  if (cfg.sheetId) document.getElementById('gsSheetId').value = cfg.sheetId;
-  // Force auto-sync checkbox to checked and persist it
-  document.getElementById('gsAutoSync').checked = true;
-  localStorage.setItem('clearsound_gs_autosync', 'true');
+  const urlEl = document.getElementById('gsScriptUrl');
+  if (urlEl) urlEl.value = DEFAULT_GS_URL;
+  const sheetEl = document.getElementById('gsSheetId');
+  if (sheetEl && cfg.sheetId) sheetEl.value = cfg.sheetId;
   const lastSync = localStorage.getItem('clearsound_gs_lastsync');
-  if (lastSync) document.getElementById('gsLastSync').textContent = lastSync;
+  const syncEl = document.getElementById('gsLastSync');
+  if (syncEl && lastSync) syncEl.textContent = lastSync;
   updateGsStatusBanner({ url: DEFAULT_GS_URL, connected: true });
 }
 
@@ -4106,111 +4282,28 @@ function updateGsStatusBanner(cfg) {
 }
 
 async function saveGsConfig() {
-  // Real-time sync is always on — URL is hardcoded. Just ping to confirm connectivity.
   const url = DEFAULT_GS_URL;
-  const sheetId = document.getElementById('gsSheetId').value.trim();
+  const sheetIdEl = document.getElementById('gsSheetId');
+  const sheetId = sheetIdEl ? sheetIdEl.value.trim() : '';
   const cfg = { url, sheetId, connected: true };
   saveGsConfigStore(cfg);
-  localStorage.setItem('clearsound_gs_autosync', 'true');
   showLoader();
   try {
     const resp = await fetch(url, { method:'POST', body: JSON.stringify({ action:'ping' }), headers:{ 'Content-Type':'text/plain' } });
     const data = await resp.json();
     updateGsStatusBanner(cfg);
-    if (data.success) {
-      toast('✅ API connected and real-time sync is active!', 'success');
-    } else {
-      toast('⚠️ API responded but ping failed: ' + (data.error || 'Unknown'), 'warning');
-    }
+    toast(data.success ? '✅ Connected! Live sync is active.' : '⚠️ Ping failed: '+(data.error||'Unknown'), data.success ? 'success' : 'warning');
   } catch(err) {
     updateGsStatusBanner(cfg);
-    toast('⚠️ Could not reach API — check network/deployment access.', 'warning');
+    toast('⚠️ Could not reach API — check deployment.', 'warning');
   } finally { hideLoader(); }
 }
 
-function clearGsConfig() {
-  if (!confirm('Disconnect Google Sheets? Data will remain in local storage.')) return;
-  localStorage.removeItem(GS_CONFIG_KEY);
-  document.getElementById('gsScriptUrl').value = '';
-  document.getElementById('gsSheetId').value = '';
-  updateGsStatusBanner({});
-  toast('Disconnected from Google Sheets', 'warning');
-}
 
-function saveGsAutoSync(checked) {
-  localStorage.setItem('clearsound_gs_autosync', checked ? 'true' : 'false');
-  toast(checked ? 'Auto-sync enabled' : 'Auto-sync disabled', 'info');
-}
 
-async function pushToSheets() {
-  const cfg = getGsConfig();
-  if (!cfg.url) { toast('Please connect Google Sheets first (Settings → Google Sheets tab)', 'error'); return; }
-  if (!confirm('Push all local data to Google Sheets? This will overwrite the sheet contents.')) return;
 
-  showLoader();
-  try {
-    const db = loadDb();
-    const resp = await fetch(cfg.url, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'pushAll', db }),
-      headers: { 'Content-Type': 'text/plain' }
-    });
-    const data = await resp.json();
-    if (data.success) {
-      const now = fmtDateTime();
-      localStorage.setItem('clearsound_gs_lastsync', now);
-      document.getElementById('gsLastSync').textContent = now;
-      cfg.connected = true;
-      saveGsConfigStore(cfg);
-      updateGsStatusBanner(cfg);
-      toast('✅ All data pushed to Google Sheets!', 'success');
-    } else {
-      toast('Push failed: ' + (data.error || 'Unknown error'), 'error');
-    }
-  } catch(err) {
-    toast('Push failed: ' + err.message, 'error');
-  } finally { hideLoader(); }
-}
 
-async function pullFromSheets() {
-  const cfg = getGsConfig();
-  if (!cfg.url) { toast('Please connect Google Sheets first', 'error'); return; }
-  if (!confirm('Pull all data from Google Sheets? This will REPLACE your current local data.')) return;
 
-  showLoader();
-  try {
-    const resp = await fetch(cfg.url, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'pullAll' }),
-      headers: { 'Content-Type': 'text/plain' }
-    });
-    const data = await resp.json();
-    if (data.success && data.db) {
-      // Normalise all date/time fields BEFORE saving (Google Sheets sends Date objects)
-      const normDb = normalisePulledDb(data.db);
-      // Deep-merge settings, then assign the rest
-      if (normDb.settings) Object.assign(demoData.settings, normDb.settings);
-      const { settings: _s, ...rest } = normDb;
-      Object.assign(demoData, rest);
-      saveDb(demoData);
-
-      const now = fmtDateTime();
-      localStorage.setItem('clearsound_gs_lastsync', now);
-      const syncEl = document.getElementById('gsLastSync');
-      if (syncEl) syncEl.textContent = now;
-
-      // Refresh the current page view in-memory — NO location.reload()
-      // location.reload() was causing logout because currentUser is in memory only
-      refreshCurrentPage();
-
-      toast('✅ Data pulled from Google Sheets successfully!', 'success');
-    } else {
-      toast('Pull failed: ' + (data.error || 'Unknown error'), 'error');
-    }
-  } catch(err) {
-    toast('Pull failed: ' + err.message, 'error');
-  } finally { hideLoader(); }
-}
 
 // Sync a single write action to Google Sheets (used for auto-sync)
 async function syncActionToSheets(params) {
